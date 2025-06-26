@@ -3,6 +3,7 @@ package kz.ncanode.controller;
 import kz.ncanode.dto.certificate.CertificateRevocation;
 import kz.ncanode.dto.request.CmsCreateRequest;
 import kz.ncanode.dto.request.CmsVerifyRequest;
+import kz.ncanode.dto.request.CmsVerifyDigestedRequest;
 import kz.ncanode.dto.response.CmsDataResponse;
 import kz.ncanode.dto.response.CmsResponse;
 import kz.ncanode.dto.response.CmsVerificationResponse;
@@ -38,6 +39,16 @@ public class CmsController {
             cmsVerifyRequest.getData(),
             cmsVerifyRequest.getRevocationCheck().contains(CertificateRevocation.OCSP),
             cmsVerifyRequest.getRevocationCheck().contains(CertificateRevocation.CRL)
+        ));
+    }
+
+    @PostMapping("/verify/digested")
+    public ResponseEntity<CmsVerificationResponse> verifyDigested(@Valid @RequestBody CmsVerifyDigestedRequest request) {
+        return ResponseEntity.ok(cmsService.verifyDigested(
+            request.getCms(),
+            request.getHash(),
+            request.getRevocationCheck().contains(CertificateRevocation.OCSP),
+            request.getRevocationCheck().contains(CertificateRevocation.CRL)
         ));
     }
 

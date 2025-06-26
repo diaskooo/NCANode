@@ -230,6 +230,35 @@ paths:
         '200':
           $ref: '#/components/responses/CmsVerificationResponse'
 
+  /cms/verify/digested:
+    post:
+      tags:
+        - CMS
+      summary: Проверяет CMS, подписанный только хэшем.
+      requestBody:
+        description: Запрос на проверку подписи по хэшу
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/VerifyRequest'
+                - properties:
+                    cms:
+                      $ref: '#/components/schemas/Cms'
+                    hash:
+                      type: string
+                      description: Хэш данных в формате Base64
+                    digestedOnly:
+                      type: boolean
+                      default: true
+                      description: Не хэшировать повторно переданный хэш
+                - required:
+                    - cms
+                    - hash
+      responses:
+        '200':
+          $ref: '#/components/responses/CmsVerificationResponse'
+
   /cms/extract:
     post:
       tags:
