@@ -5,6 +5,7 @@ import kz.ncanode.common.IntegrationSpecification
 import kz.ncanode.controller.CmsController
 import kz.ncanode.dto.request.CmsCreateRequest
 import kz.ncanode.dto.request.CmsVerifyRequest
+import kz.ncanode.dto.request.CmsVerifyDigestedRequest
 import kz.ncanode.dto.request.SignerRequest
 import kz.ncanode.dto.response.CmsDataResponse
 import kz.ncanode.dto.response.CmsResponse
@@ -24,6 +25,7 @@ class CmsIntegrationTest extends IntegrationSpecification {
     private final static String URI_SIGN = "/cms/sign"
     private final static String URI_SIGN_ADD = "/cms/sign/add"
     private final static String URI_VERIFY = "/cms/verify"
+    private final static String URI_VERIFY_DIGESTED = "/cms/verify/digested"
     private final static String URI_EXTRACT = "/cms/extract"
 
     @Autowired
@@ -85,6 +87,24 @@ class CmsIntegrationTest extends IntegrationSpecification {
 
         when:
         def response = doPostQuery(URI_VERIFY, requestJson, 200, CmsVerificationResponse)
+
+        then:
+        response != null
+        response.signers.size() == 1
+        !response.valid
+    }
+
+    def "test verify digested"() {
+        given:
+        def request = CmsVerifyDigestedRequest.builder()
+            .cms(SIGNED_CMS)
+            .hash(Base64.encoder.encodeToString(TEST_DATA.getBytes(StandardCharsets.UTF_8)))
+            .build()
+
+        def requestJson = new ObjectMapper().writeValueAsString(request)
+
+        when:
+        def response = doPostQuery(URI_VERIFY_DIGESTED, requestJson, 200, CmsVerificationResponse)
 
         then:
         response != null

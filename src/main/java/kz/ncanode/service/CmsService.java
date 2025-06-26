@@ -297,6 +297,98 @@ public class CmsService {
     }
 
     /**
+     * Проверяет CMS, если подписан только хэш
+     */
+    public CmsVerificationResponse verifyDigested(String signedCms, String hash, boolean checkOcsp, boolean checkCrl) {
+        try {
+            CMSSignedData cms = new CMSSignedData(Base64.getDecoder().decode(signedCms.getBytes(StandardCharsets.UTF_8)));
+
+            CertStore certStore = cms.getCertificatesAndCRLs("Collection", KalkanProvider.PROVIDER_NAME);
+            val signerIt = cms.getSignerInfos().getSigners().iterator();
+
+            final List<CmsSignerInfo> signers = new ArrayList<>();
+
+            boolean valid = true;
+
+            val currentDate = certificateService.getCurrentDate();
+            byte[] hashBytes = Base64.getDecoder().decode(hash);
+
+            while (signerIt.hasNext()) {
+                var signerInfoBuilder = CmsSignerInfo.builder();
+
+                var signer = (SignerInformation) signerIt.next();
+                X509CertSelector signerConstraints = signer.getSID();
+                var certCollection = certStore.getCertificates(signerConstraints);
+
+                var certIt = certCollection.iterator();
+
+                while (certIt.hasNext()) {
+                    CertificateWrapper cert = new CertificateWrapper((X509Certificate) certIt.next());
+
+                    certificateService.attachValidationData(cert, checkOcsp, checkCrl);
+
+                    Signature sig = Signature.getInstance(cert.getX509Certificate().getSigAlgName(), kalkanWrapper.getKalkanProvider());
+                    sig.initVerify(cert.getPublicKey());
+                    sig.update(hashBytes);
+                    if (!sig.verify(signer.getSignature()) || !cert.isValid(currentDate, checkOcsp, checkCrl)) {
+                        valid = false;
+                    }
+
+                    signerInfoBuilder.certificate(cert.toCertificateInfo(currentDate, checkOcsp, checkCrl));
+                }
+
+                // TSP Checking
+                if (signer.getUnsignedAttributes() != null) {
+                    var attrs = signer.getUnsignedAttributes().toHashtable();
+
+                    if (attrs.containsKey(PKCSObjectIdentifiers.id_aa_signatureTimeStampToken)) {
+                        Attribute attr = null;
+                        Object obj = attrs.get(PKCSObjectIdentifiers.id_aa_signatureTimeStampToken);
+                        if(obj instanceof Vector) {
+                            attr = (Attribute)( ((Vector)obj).get(0) );
+                        }
+                        else {
+                            attr = (Attribute)obj;
+                        }
+
+                        if (attr.getAttrValues().size() != 1) {
+                            throw new Exception("Too many TSP tokens");
+                        }
+
+                        CMSSignedData tspCms = new CMSSignedData(attr.getAttrValues().getObjectAt(0).getDERObject().getEncoded());
+                        TimeStampTokenInfo tspi = tspService.info(tspCms).orElseThrow();
+
+                        try {
+                            TspInfo tspInfo = TspInfo.builder()
+                                .serialNumber(new String(Hex.encode(tspi.getSerialNumber().toByteArray())))
+                                .genTime(tspi.getGenTime())
+                                .policy(tspi.getPolicy())
+                                .tsa(Optional.ofNullable(tspi.getTsa()).map(Object::toString).orElse(null))
+                                .tspHashAlgorithm(KalkanUtil.getHashingAlgorithmByOID(tspi.getMessageImprintAlgOID()))
+                                .hash(new String(Hex.encode(tspi.getMessageImprintDigest())))
+                                .build();
+
+                            signerInfoBuilder.tsp(tspInfo);
+                        } catch (Exception e) {
+                            log.warn(e.getMessage(), e);
+                        }
+
+                    }
+                }
+
+                signers.add(signerInfoBuilder.build());
+            }
+
+            return CmsVerificationResponse.builder()
+                .valid(valid)
+                .signers(signers)
+                .build();
+        } catch (Exception e) {
+            throw new ClientException(e.getMessage(), e);
+        }
+    }
+
+    /**
      * Извлекает данные из CMS если они есть
      *
      * @param signedCms
